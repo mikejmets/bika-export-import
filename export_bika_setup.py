@@ -1,4 +1,6 @@
 from AccessControl.SecurityManagement import newSecurityManager
+from bika.lims.content.sampletype import SampleType
+from DateTime import DateTime
 from Products.Archetypes import Field
 from Products.CMFCore.utils import getToolByName
 
@@ -167,7 +169,7 @@ class Main:
             for col, key in enumerate(keys):
                 cell = ws.cell(column=col + 3, row=1)
                 cell.value = key
-        nr_rows = len(ws.rows) + 1
+        nr_rows = len(list(ws.rows)) + 1
         for row, v in enumerate(value):
             if not any(v.values()):
                 break
@@ -190,7 +192,7 @@ class Main:
             ws = self.wb.create_sheet(title=sheetname)
             ws.cell(column=1, row=1).value = "Source"
             ws.cell(column=2, row=1).value = "Target"
-        nr_rows = len(ws.rows) + 1
+        nr_rows = len(list(ws.rows)) + 1
         for row, value in enumerate(values):
             ws.cell(column=1, row=nr_rows + row).value = instance.id
             ws.cell(column=2, row=nr_rows + row).value = value.id
@@ -301,7 +303,18 @@ class Main:
             # then schema field values
             for col, field in enumerate(fields):
                 value = self.mutate(instance, field)
-                ws.cell(column=col + 3, row=row + 2).value = value
+                if isinstance(value, DateTime):
+                    value = str(value)
+                #elif field.getName() == 'SampleType':
+                #    import pdb; pdb.set_trace()
+                #    value = value.id
+                try:
+                    #print 'Set Cell (%s, %s) to %s' % ( col+3, row+2, value)
+                    ws.cell(column=col + 3, row=row + 2).value = value
+                except Exception, e:
+                    #import pdb; pdb.set_trace()
+                    print 'Error on %s: %s' % (
+                            field.getName(), str(e))
 
 
 if __name__ == '__main__':

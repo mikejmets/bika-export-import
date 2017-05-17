@@ -285,8 +285,9 @@ class Main:
             return None
         fti = pt[portal_type]
         ws = self.wb[portal_type]
-        keys = [cell.value for cell in ws.rows[0]]
-        for rownr, row in enumerate(ws.rows[1:]):
+        rows = tuple(ws.rows)
+        keys = [cell.value for cell in rows[0]]
+        for rownr, row in enumerate(rows[1:]):
             rowdict = dict(zip(keys, [cell.value for cell in row]))
             # First, some fields we manually extract, to prevent them
             # from being handled by the loop below:
@@ -382,7 +383,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-t',
         dest='title',
-        default='Plone',
+        default='Bika',
         help='If a new Plone site is created, this specifies the site Title.'),
     parser.add_argument(
         '-l',
