@@ -1,6 +1,6 @@
 from AccessControl.SecurityManagement import newSecurityManager
-from bika.lims.content.sampletype import SampleType
 from DateTime import DateTime
+from bika.lims.interfaces import IProxyField
 from Products.Archetypes import Field
 from Products.CMFCore.utils import getToolByName
 
@@ -220,6 +220,12 @@ class Main:
         # Other falsish values make empty cells.
         if not value:
             return ''
+        # Ignore Analyses fields
+        if field.getName() == 'Analyses':
+            return None
+        # Ignore ProxyFields
+        if IProxyField.providedBy(field):
+            return None
         # Date fields get stringed to rfc8222
         if Field.IDateTimeField.providedBy(field):
             return value.rfc822() if value else None
@@ -303,18 +309,14 @@ class Main:
             # then schema field values
             for col, field in enumerate(fields):
                 value = self.mutate(instance, field)
-                if isinstance(value, DateTime):
-                    value = str(value)
-                #elif field.getName() == 'SampleType':
-                #    import pdb; pdb.set_trace()
-                #    value = value.id
                 try:
                     #print 'Set Cell (%s, %s) to %s' % ( col+3, row+2, value)
                     ws.cell(column=col + 3, row=row + 2).value = value
                 except Exception, e:
-                    #import pdb; pdb.set_trace()
                     print 'Error on %s: %s' % (
                             field.getName(), str(e))
+                    #import pdb; pdb.set_trace()
+                    raise
 
 
 if __name__ == '__main__':
