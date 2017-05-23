@@ -308,8 +308,17 @@ class Main:
             instance.unmarkCreationFlag()
             instance.reindexObject()
             for fieldname, value in rowdict.items():
-                field = instance.schema[fieldname]
-                self.set(instance, field, value)
+                try:
+                    field = instance.schema[fieldname]
+                    self.set(instance, field, value)
+                except:
+                    print 'Error on: %s %s %s' % (
+                            instance.portal_type,
+                            instance.title,
+                            fieldname)
+                    import pdb; pdb.set_trace()
+                    if fieldname not in ('Location',):
+                        raise
 
     def defer(self, instance, field, catalog, allowed_types, target_id):
         self.deferred.append({
