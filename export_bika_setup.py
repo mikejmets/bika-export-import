@@ -1,6 +1,10 @@
 from AccessControl.SecurityManagement import newSecurityManager
 from DateTime import DateTime
-from bika.lims.interfaces import IProxyField
+try:
+    from bika.lims.interfaces import IProxyField
+    PROXY_FIELD_INSTALLED = True
+except:
+    PROXY_FIELD_INSTALLED = False
 from Products.Archetypes import Field
 from Products.CMFCore.utils import getToolByName
 
@@ -223,8 +227,8 @@ class Main:
         # Ignore Analyses fields
         if field.getName() == 'Analyses':
             return None
-        # Ignore ProxyFields
-        if IProxyField.providedBy(field):
+        #### Ignore ProxyFields
+        if PROXY_FIELD_INSTALLED and IProxyField.providedBy(field):
             return None
         # Date fields get stringed to rfc8222
         if Field.IDateTimeField.providedBy(field):
@@ -241,7 +245,7 @@ class Main:
             filename = value.filename if value.filename \
                 else instance.id + '-' + field.getName() + "." + extension
             of = open(os.path.join(self.tempdir, filename), 'wb')
-            of.write(value.data)
+            of.write(value.data.data)
             of.close()
             return filename
         elif Field.IReferenceField.providedBy(field):
