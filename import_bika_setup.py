@@ -316,7 +316,6 @@ class Main:
                             instance.portal_type,
                             instance.title,
                             fieldname)
-                    import pdb; pdb.set_trace()
                     if fieldname not in ('Location',):
                         raise
 
