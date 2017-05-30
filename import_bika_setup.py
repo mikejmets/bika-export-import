@@ -227,17 +227,18 @@ class Main:
         if isinstance(value, unicode):
             value = value.encode('utf-8')
 
-        # RecordField is a single dictionary from the lookup table
-        if isinstance(field, RecordField):
-            value = self.resolve_records(instance, field, value) \
-                if value else {}
         # RecordsField is a list of dictionaries from the lookup table
-        elif isinstance(field, RecordsField) or \
+        # NOTE: RecordsField is a subclass of RecordField so mu be checked first
+        if isinstance(field, RecordsField) or \
                 (isinstance(value, basestring)
                  and value
                  and value.endswith('_values')):
             value = self.resolve_records(instance, field, value) \
                 if value else []
+        # RecordField is a single dictionary from the lookup table
+        elif isinstance(field, RecordField):
+            value = self.resolve_records(instance, field, value) \
+                if value else {}
 
         # ReferenceField looks up single ID from cell value, or multiple
         # IDs from a lookup table
