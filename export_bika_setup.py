@@ -159,6 +159,10 @@ class Main:
         if type(value) == dict:
             value = [value]
         keys = value[0].keys()
+        #Remove special fields that are filled 'manually' below
+        for k in ('id', 'field'):
+            if k in keys:
+                keys.remove(k)
         # Create or obtain sheet for this field type's values
         sheetname = '%s_values' % field.type
         sheetname = sheetname[:31]
@@ -245,7 +249,10 @@ class Main:
             filename = value.filename if value.filename \
                 else instance.id + '-' + field.getName() + "." + extension
             of = open(os.path.join(self.tempdir, filename), 'wb')
-            of.write(value.data.data)
+            try:
+                of.write(value.data)
+            except:
+                of.write(value.data.data)
             of.close()
             return filename
         elif Field.IReferenceField.providedBy(field):
