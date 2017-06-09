@@ -158,12 +158,13 @@ class Main:
         value = field.get(instance)
         if type(value) == dict:
             value = [value]
-        keys = value[0].keys()
-        #Remove special fields that are filled 'manually' below
+        keys = sorted(value[0].keys())
+        #Remove special fields that are filled 'manually'
         for k in ('id', 'field'):
             if k in keys:
                 keys.remove(k)
         # Create or obtain sheet for this field type's values
+        #print keys
         sheetname = '%s_values' % field.type
         sheetname = sheetname[:31]
         if sheetname in self.wb:
@@ -179,14 +180,24 @@ class Main:
                 cell.value = key
         nr_rows = len(list(ws.rows)) + 1
         for row, v in enumerate(value):
-            if not any(v.values()):
+            #if instance.portal_type == "ARTemplate" and \
+            #   'Container' in v.keys():
+            #   print v
+            #   import pdb; pdb.set_trace()
+            #if not any(v.values()):
                 break
             # source id/field
             ws.cell(column=1, row=nr_rows + row).value = instance.id
             ws.cell(column=2, row=nr_rows + row).value = field.getName()
             for col, key in enumerate(keys):
                 c_value = v.get(key, '')
-                ws.cell(column=col + 3, row=nr_rows + row).value = c_value
+                try:
+                    ws.cell(column=col + 3, row=nr_rows + row).value = c_value
+                except Exception, e:
+                    print 'Error on %s: %s' % (
+                            field.getName(), str(e))
+                    #import pdb; pdb.set_trace()
+                    #raise
 
         return sheetname
 
@@ -250,9 +261,12 @@ class Main:
                 else instance.id + '-' + field.getName() + "." + extension
             of = open(os.path.join(self.tempdir, filename), 'wb')
             try:
-                of.write(value.data)
-            except:
                 of.write(value.data.data)
+            except:
+                try:
+                    of.write(value.data)
+                except:
+                    import pdb; pdb.set_trace()
             of.close()
             return filename
         elif Field.IReferenceField.providedBy(field):
@@ -327,7 +341,7 @@ class Main:
                     print 'Error on %s: %s' % (
                             field.getName(), str(e))
                     #import pdb; pdb.set_trace()
-                    raise
+                    #raise
 
 
 if __name__ == '__main__':
