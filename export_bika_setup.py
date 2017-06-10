@@ -178,13 +178,12 @@ class Main:
             for col, key in enumerate(keys):
                 cell = ws.cell(column=col + 3, row=1)
                 cell.value = key
+            if field.getName() == 'Analyses':
+                col = 3 + len(keys)
+            	ws.cell(column=col, row=1).value = "service_id"
         nr_rows = len(list(ws.rows)) + 1
         for row, v in enumerate(value):
-            #if instance.portal_type == "ARTemplate" and \
-            #   'Container' in v.keys():
-            #   print v
-            #   import pdb; pdb.set_trace()
-            #if not any(v.values()):
+            if not any(v.values()):
                 break
             # source id/field
             ws.cell(column=1, row=nr_rows + row).value = instance.id
@@ -199,6 +198,14 @@ class Main:
                     #import pdb; pdb.set_trace()
                     #raise
 
+            if field.getName() == 'Analyses' and \
+               v.get('service_uid', False):
+                col = 3 + len(keys)
+                services = instance.bika_setup_catalog(UID=v['service_uid'])
+                title = ''
+                if len(services):
+                    title = services[0].getId
+            	ws.cell(column=col, row=nr_rows+row).value = title
         return sheetname
 
     def write_reference_values(self, instance, field):
@@ -229,6 +236,9 @@ class Main:
         return extension
 
     def mutate(self, instance, field):
+        #if instance.portal_type == "ARTemplate" and \
+        #   field.getName() == 'Analyses':
+        #   import pdb; pdb.set_trace()
         value = field.get(instance)
         # Booleans are special; we'll str and return them.
         if value is True or value is False:
@@ -240,7 +250,8 @@ class Main:
         if not value:
             return ''
         # Ignore Analyses fields
-        if field.getName() == 'Analyses':
+        if instance.portal_type != "ARTemplate" and \
+           field.getName() == 'Analyses':
             return None
         #### Ignore ProxyFields
         if PROXY_FIELD_INSTALLED and IProxyField.providedBy(field):

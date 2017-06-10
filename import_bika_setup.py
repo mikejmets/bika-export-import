@@ -1,19 +1,23 @@
-from AccessControl.SecurityManagement import newSecurityManager
-from Products.Archetypes import Field
-from Products.ATExtensions.ateapi import RecordField, RecordsField
-from Products.CMFCore.utils import getToolByName
-from Products.CMFPlone.factory import _DEFAULT_PROFILE
-from Products.CMFPlone.factory import addPloneSite
-
-import openpyxl
-
 import argparse
+import openpyxl
 import os
 import pprint
 import shutil
 import tempfile
 import transaction
 import zipfile
+from AccessControl.SecurityManagement import newSecurityManager
+try:
+    from bika.lims.idserver2 import INumberGenerator
+    NEW_ID_SERVER = True
+except:
+    NEW_ID_SERVER = False
+from Products.Archetypes import Field
+from Products.ATExtensions.ateapi import RecordField, RecordsField
+from Products.CMFCore.utils import getToolByName
+from Products.CMFPlone.factory import _DEFAULT_PROFILE
+from Products.CMFPlone.factory import addPloneSite
+from zope.component import getUtility
 
 
 # def excepthook(typ, value, tb):
@@ -112,6 +116,9 @@ class Main:
         # Resolve deferred/circular references
         self.solve_deferred()
 
+        # Resolve Analyses
+        self.resolve_analyses()
+
         # Rebuild catalogs
         for c in ['bika_analysis_catalog',
                   'bika_catalog',
@@ -201,9 +208,14 @@ class Main:
                 keys = [cell.value for cell in row]
                 continue
             rowdict = dict(zip(keys, [cell.value for cell in row]))
+            if field.__name__ == 'MaxTimeAllowed':
+                for k in rowdict.keys():
+                    if rowdict[k] is None:
+                        rowdict[k] = 0
             if rowdict['id'] == instance.id \
                     and rowdict['field'] == field.getName():
                 matches.append(rowdict)
+
         if type(field.default) == dict:
             return matches[0] if matches else {}
         else:
@@ -239,13 +251,12 @@ class Main:
         elif isinstance(field, RecordField):
             value = self.resolve_records(instance, field, value) \
                 if value else {}
-
         # ReferenceField looks up single ID from cell value, or multiple
         # IDs from a lookup table
-        if Field.IReferenceField.providedBy(field):
+        elif Field.IReferenceField.providedBy(field):
             value = self.resolve_reference_ids_to_uids(instance, field, value)
         # LinesField was converted to a multiline string on export
-        if Field.ILinesField.providedBy(field):
+        elif Field.ILinesField.providedBy(field):
             value = value.splitlines() if value else ()
         # XXX THis should not be reading entire file contents into mem.
         # TextField provides the IFileField interface, these must be ignored.
@@ -284,6 +295,8 @@ class Main:
         if portal_type not in pt:
             print 'Error: %s not found in portal_types.' % portal_type
             return None
+        if NEW_ID_SERVER:
+            number_generator = getUtility(INumberGenerator)
         fti = pt[portal_type]
         ws = self.wb[portal_type]
         rows = tuple(ws.rows)
@@ -307,7 +320,8 @@ class Main:
             parent = self.portal.unrestrictedTraverse(path)
             instance = fti.constructInstance(parent, instance_id, title=title)
             instance.unmarkCreationFlag()
-            instance.reindexObject()
+            if NEW_ID_SERVER:
+                dummy = number_generator(key=portal_type.lower())
             for fieldname, value in rowdict.items():
                 try:
                     field = instance.schema[fieldname]
@@ -364,6 +378,25 @@ class Main:
         if self.deferred:
             print 'Failed to solve %s deferred targets:' % len(self.deferred)
             pprint.pprint(self.deferred)
+
+    def resolve_analyses(self):
+        types = ('ARTemplate',)
+        bcs = self.portal.bika_setup_catalog
+        for portal_type in types:
+            brains = bcs(portal_type=portal_type)
+            for brain in brains:
+                obj = brain.getObject()
+                new = []
+                for match in obj.getAnalyses():
+                    if match.get('service_id', False):
+                        services = bcs(
+                                getId=match['service_id'])
+                        if services:
+                            match['service_uid'] = services[0].UID
+                        else:
+                            match['service_uid'] = None
+                    new.append(match)
+                obj.setAnalyses(new)
 
 
 if __name__ == '__main__':
