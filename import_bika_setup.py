@@ -285,8 +285,9 @@ class Main:
         for row in ws.rows:
             fieldname = row[0].value
             cellvalue = row[1].value
-            field = schema[fieldname]
-            self.set(instance, field, cellvalue)
+            field = schema.get(fieldname, '')
+            if field:
+                self.set(instance, field, cellvalue)
 
     def import_portal_type(self, portal_type):
         if portal_type not in self.wb:
