@@ -1,19 +1,25 @@
-from AccessControl.SecurityManagement import newSecurityManager
-from DateTime import DateTime
-try:
-    from bika.lims.interfaces import IProxyField
-    PROXY_FIELD_INSTALLED = True
-except:
-    PROXY_FIELD_INSTALLED = False
-from Products.Archetypes import Field
-from Products.CMFCore.utils import getToolByName
-
 import argparse
 import openpyxl
 import os
 import shutil
 import tempfile
 import zipfile
+
+from AccessControl.SecurityManagement import newSecurityManager
+from DateTime import DateTime
+from plone.dexterity.interfaces import IDexterityFTI
+from Products.Archetypes import Field
+from Products.CMFCore.utils import getToolByName
+import zope.interface
+from zope.component import getUtility
+from zope.dottedname.resolve import resolve
+from zope.schema import getFieldsInOrder
+
+try:
+    from bika.lims.interfaces import IProxyField
+    PROXY_FIELD_INSTALLED = True
+except:
+    PROXY_FIELD_INSTALLED = False
 
 
 # def excepthook(typ, value, tb):
@@ -25,6 +31,8 @@ import zipfile
 # import sys; sys.excepthook = excepthook
 
 export_types = [
+    'ClientDepartment',
+    'ClientType',
     'Client',
     'Contact',
     'ARPriority',
@@ -57,33 +65,34 @@ export_types = [
     'StorageLocation',
     'SamplePoint',
     'SampleType',
+    'Strain',
     'SamplingDeviation',
     'SRTemplate',
     'SubGroup',
     'Supplier',
     'SupplierContact',
+    'UnitConversion',
     'WorksheetTemplate',
-    #
-    'ARReport',
-    'Analysis',
-    'AnalysisRequest',
-    'Attachment',
+    #'ARReport',
+    #'Analysis',
+    #'AnalysisRequest',
+    #'Attachment',
     'Batch',
     'BatchFolder',
     'Calculations',
     'ClientFolder',
     'DuplicateAnalysis',
-    'Invoice',
+    #'Invoice',
     'InvoiceBatch',
     'Pricelist',
     'ReferenceAnalysis',
     'ReferenceSample',
     'RejectAnalysis',
-    'Sample',
-    'SamplePartition',
-    'SupplyOrder',
-    'SupplyOrderItem',
-    'Worksheet'
+    #'Sample',
+    #'SamplePartition',
+    #'SupplyOrder',
+    #'SupplyOrderItem',
+    #'Worksheet'
 ]
 
 # fieldnames that are never exported
@@ -144,14 +153,38 @@ class Main:
         at = getToolByName(self.portal, 'archetype_tool')
         return at.getCatalogsByType(portal_type)[0]
 
-    def get_fields(self, schema):
+    def get_fields(self, instance):
         fields = []
-        for field in schema.fields():
-            if field.getName() in ignore_fields:
-                continue
-            if Field.IComputedField.providedBy(field):
-                continue
-            fields.append(field)
+        type_info = instance.getTypeInfo()
+        if type_info.content_meta_type == 'Dexterity Item':
+            field_names = []
+            if 'plone.app.dexterity.behaviors.metadata.IBasic' in \
+                    type_info.behaviors:
+                fields.append(
+                    {'id': 'id',
+                     'type': '',
+                     'value': instance.id})
+                fields.append(
+                    {'id': 'title',
+                     'type': '',
+                     'value': instance.title})
+                fields.append(
+                    {'id': 'description',
+                     'type': '',
+                     'value': instance.description})
+            iface = resolve(type_info.schema)
+            for field in getFieldsInOrder(iface):
+                fields.append(
+                    {'id': field[0], 'type': field[1],
+                     'value': instance.get(field[0])})
+        else:
+            schema = instance.schema
+            for field in schema.fields():
+                if field.getName() in ignore_fields:
+                    continue
+                if Field.IComputedField.providedBy(field):
+                    continue
+                fields.append(field)
         return fields
 
     def write_dict_field_values(self, instance, field):
@@ -164,7 +197,6 @@ class Main:
             if k in keys:
                 keys.remove(k)
         # Create or obtain sheet for this field type's values
-        #print keys
         sheetname = '%s_values' % field.type
         sheetname = sheetname[:31]
         if sheetname in self.wb:
@@ -238,7 +270,10 @@ class Main:
     def mutate(self, instance, field):
         #if instance.portal_type == "ARTemplate" and \
         #   field.getName() == 'Analyses':
-        #   import pdb; pdb.set_trace()
+        if type(field) == dict:
+            #Dexterity
+            return getattr(instance, field['id'])
+
         value = field.get(instance)
         # Booleans are special; we'll str and return them.
         if value is True or value is False:
@@ -252,6 +287,8 @@ class Main:
         # Ignore Analyses fields
         if instance.portal_type != "ARTemplate" and \
            field.getName() == 'Analyses':
+            print '------------------------ %s: %s' % (
+                instance.portal_type, instance.getId())
             return None
         #### Ignore ProxyFields
         if PROXY_FIELD_INSTALLED and IProxyField.providedBy(field):
@@ -291,9 +328,13 @@ class Main:
         else:
             value = field.get(instance)
             # Dictionaries or lists of dictionaries
-            if type(value) == dict \
+            if type(value) == dict and value == {}:
+                return ''
+            elif type(value) in (list, tuple) and len(value) == 0:
+                return ''
+            elif type(value) == dict \
                     or (type(value) in (list, tuple)
-                        and type(value[0]) == dict):
+                        and len(value) and type(value[0]) == dict):
                 return self.write_dict_field_values(instance, field)
             else:
                 return value
@@ -303,7 +344,7 @@ class Main:
         ws = self.wb.create_sheet(title='Laboratory')
         ws.page_setup.fitToHeight = 0
         ws.page_setup.fitToWidth = 1
-        fields = self.get_fields(instance.schema)
+        fields = self.get_fields(instance)
         for row, field in enumerate(fields):
             ws.cell(column=1, row=row + 1).value = field.getName()
             value = self.mutate(instance, field)
@@ -312,13 +353,22 @@ class Main:
     def export_bika_setup(self):
         instance = self.portal.bika_setup
         ws = self.wb.create_sheet(title='BikaSetup')
-        fields = self.get_fields(instance.schema)
+        fields = self.get_fields(instance)
         for row, field in enumerate(fields):
             ws.cell(column=1, row=row + 1).value = field.getName()
             value = self.mutate(instance, field)
             ws.cell(column=2, row=row + 1).value = value
 
     def export_portal_type(self, portal_type):
+        def get_headers(fields):
+            headers = []
+            for field in fields:
+                if type(field) == dict:
+                    headers.append(field['id'])
+                else:
+                    headers.append(field.getName())
+            return headers
+
         catalog = self.get_catalog(portal_type)
         brains = catalog(portal_type=portal_type)
         if not brains:
@@ -327,13 +377,14 @@ class Main:
         ws = self.wb.create_sheet(title=portal_type)
         # Write headers
         instance = brains[0].getObject()
-        fields = self.get_fields(instance.schema)
+        fields = self.get_fields(instance)
         headers = ['path', 'uid']
-        headers += [f.getName() for f in fields]
+        headers += get_headers(fields)
         for col, header in enumerate(headers):
             ws.cell(column=col + 1, row=1).value = header
         # Write values
         portal_path = '/'.join(self.portal.getPhysicalPath())
+        
         for row, brain in enumerate(brains):
             instance = brain.getObject()
             # path
@@ -344,6 +395,8 @@ class Main:
             ws.cell(column=2, row=row + 2).value = instance.UID()
             # then schema field values
             for col, field in enumerate(fields):
+                #if field.getName() == 'Licenses':
+                #    import pdb; pdb.set_trace()
                 value = self.mutate(instance, field)
                 try:
                     #print 'Set Cell (%s, %s) to %s' % ( col+3, row+2, value)
@@ -351,7 +404,8 @@ class Main:
                 except Exception, e:
                     print 'Error on %s: %s' % (
                             field.getName(), str(e))
-                    #import pdb; pdb.set_trace()
+                    import pdb; pdb.set_trace()
+                    value = self.mutate(instance, field)
                     #raise
 
 
