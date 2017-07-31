@@ -69,21 +69,21 @@ export_types = [
     'SamplingDeviation',
     'SRTemplate',
     'SubGroup',
-    'Supplier',
-    'SupplierContact',
+    #'Supplier',
+    #'SupplierContact',
     'UnitConversion',
     'WorksheetTemplate',
     #'ARReport',
     #'Analysis',
     #'AnalysisRequest',
     #'Attachment',
-    'Batch',
-    'BatchFolder',
+    #'Batch',
+    #'BatchFolder',
     'Calculations',
     'ClientFolder',
     'DuplicateAnalysis',
     #'Invoice',
-    'InvoiceBatch',
+    #'InvoiceBatch',
     'Pricelist',
     'ReferenceAnalysis',
     'ReferenceSample',
@@ -222,13 +222,17 @@ class Main:
             ws.cell(column=2, row=nr_rows + row).value = field.getName()
             for col, key in enumerate(keys):
                 c_value = v.get(key, '')
+                if hasattr(c_value, 'portal_type'):
+                    print 'Error attempt to write instance %s:%s to field %s of instance %s:%s' % (c_value.portal_type, c_value.id, field.getName(), instance.portal_type, instance.id)
+                    continue
+
                 try:
                     ws.cell(column=col + 3, row=nr_rows + row).value = c_value
                 except Exception, e:
                     print 'Error on %s: %s' % (
                             field.getName(), str(e))
-                    #import pdb; pdb.set_trace()
-                    #raise
+                    import pdb; pdb.set_trace()
+                    raise
 
             if field.getName() == 'Analyses' and \
                v.get('service_uid', False):
@@ -287,7 +291,7 @@ class Main:
         # Ignore Analyses fields
         if instance.portal_type != "ARTemplate" and \
            field.getName() == 'Analyses':
-            print '------------------------ %s: %s' % (
+            print 'Ignore Analysis field for %s: %s' % (
                 instance.portal_type, instance.getId())
             return None
         #### Ignore ProxyFields
@@ -405,8 +409,7 @@ class Main:
                     print 'Error on %s: %s' % (
                             field.getName(), str(e))
                     import pdb; pdb.set_trace()
-                    value = self.mutate(instance, field)
-                    #raise
+                    raise
 
 
 if __name__ == '__main__':

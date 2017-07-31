@@ -7,16 +7,13 @@ import tempfile
 import transaction
 import zipfile
 from AccessControl.SecurityManagement import newSecurityManager
-try:
-    from bika.lims.idserver2 import INumberGenerator
-    NEW_ID_SERVER = True
-except:
-    NEW_ID_SERVER = False
+from plone import api as ploneapi
 from Products.Archetypes import Field
 from Products.ATExtensions.ateapi import RecordField, RecordsField
 from Products.CMFCore.utils import getToolByName
 from Products.CMFPlone.factory import _DEFAULT_PROFILE
 from Products.CMFPlone.factory import addPloneSite
+from Products.DataGridField.interfaces import IDataGridField 
 from zope.component import getUtility
 
 
@@ -36,10 +33,12 @@ default_profiles = [
     'plonetheme.classic:default',
     'plonetheme.sunburst:default',
     'plone.app.caching:default',
-    'bika.lims:default',
+    'ace.lims:default',
 ]
 
 export_types = [
+    'ClientDepartment',
+    'ClientType',
     'Client',
     'Contact',
     'ARPriority',
@@ -74,9 +73,11 @@ export_types = [
     'SampleType',
     'SamplingDeviation',
     'SRTemplate',
+    'Strain',
     'SubGroup',
     'Supplier',
     'SupplierContact',
+    'UnitConversion',
     'WorksheetTemplate',
 ]
 
@@ -133,15 +134,26 @@ class Main:
         profiles = default_profiles
         if self.args.profiles:
             profiles.extend(self.args.profiles)
-        addPloneSite(
-            app,
+        print 'Ad Site: {} {} {} {} {} {}'.format(
             self.args.sitepath,
-            title=self.args.title,
-            profile_id=_DEFAULT_PROFILE,
-            extension_ids=profiles,
-            setup_content=True,
-            default_language=self.args.language
+            self.args.title,
+            _DEFAULT_PROFILE,
+            profiles,
+            True,
+            self.args.language
         )
+        try:
+            addPloneSite(
+                app,
+                self.args.sitepath,
+                title=self.args.title,
+                profile_id=_DEFAULT_PROFILE,
+                extension_ids=profiles,
+                setup_content=True,
+                default_language=self.args.language
+            )
+        except:
+            print "Dunno why this is need but create a dummy site with a dummy name in the instance and run import again"
         self.portal = app.unrestrictedTraverse(self.args.sitepath)
         return self.portal
 
@@ -258,6 +270,11 @@ class Main:
         # LinesField was converted to a multiline string on export
         elif Field.ILinesField.providedBy(field):
             value = value.splitlines() if value else ()
+        # DataGridField 
+        elif IDataGridField.providedBy(field):
+            if value:
+                import pdb; pdb.set_trace()
+            value = value.splitlines() if value else ()
         # XXX THis should not be reading entire file contents into mem.
         # TextField provides the IFileField interface, these must be ignored.
         elif value and Field.IFileField.providedBy(field) \
@@ -291,13 +308,15 @@ class Main:
 
     def import_portal_type(self, portal_type):
         if portal_type not in self.wb:
+            print 'WARNING: type %s requested but not exported' % portal_type
             return None
+        if portal_type == 'ReferenceDefinition':
+            import pdb; pdb.set_trace()
+
         pt = getToolByName(self.portal, 'portal_types')
         if portal_type not in pt:
             print 'Error: %s not found in portal_types.' % portal_type
             return None
-        if NEW_ID_SERVER:
-            number_generator = getUtility(INumberGenerator)
         fti = pt[portal_type]
         ws = self.wb[portal_type]
         rows = tuple(ws.rows)
@@ -319,10 +338,27 @@ class Main:
             del (rowdict['title'])
 
             parent = self.portal.unrestrictedTraverse(path)
-            instance = fti.constructInstance(parent, instance_id, title=title)
+            print '{}: {}: {}: {}'.format(
+                        portal_type,
+                        parent.Title(),
+                        instance_id,
+                        title)
+            try:
+                if fti.content_meta_type == 'Dexterity Item':
+                    instance = ploneapi.content.create(
+                        type=portal_type,
+                        container=parent,
+                        id=instance_id,
+                        title=title,
+                        )
+                else:
+                    instance = fti.constructInstance(
+                            parent, instance_id, title=title)
+            except Exception, e:
+                print str(e)
+                import pdb; pdb.set_trace()
+                continue
             instance.unmarkCreationFlag()
-            if NEW_ID_SERVER:
-                dummy = number_generator(key=portal_type.lower())
             for fieldname, value in rowdict.items():
                 try:
                     field = instance.schema[fieldname]
@@ -332,6 +368,7 @@ class Main:
                             instance.portal_type,
                             instance.title,
                             fieldname)
+                    import pdb; pdb.set_trace()
                     if fieldname not in ('Location',):
                         raise
 
