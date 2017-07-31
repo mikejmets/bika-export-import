@@ -120,6 +120,9 @@ class Main:
         # Resolve Analyses
         self.resolve_analyses()
 
+        # Resolve ReferenceResults
+        self.resolve_reference_results()
+
         # Rebuild catalogs
         for c in ['bika_analysis_catalog',
                   'bika_catalog',
@@ -215,6 +218,7 @@ class Main:
         # We must re-create the dict (or list of dicts) from sheet values
         ws = self.wb[value]
         matches = []
+        bcs = self.portal.bika_setup_catalog
         for rownr, row in enumerate(ws.rows):
             if rownr == 0:
                 keys = [cell.value for cell in row]
@@ -224,6 +228,12 @@ class Main:
                 for k in rowdict.keys():
                     if rowdict[k] is None:
                         rowdict[k] = 0
+            if field.getName() == 'Licenses':
+                #Major HACK #TODO please remove
+                if rowdict.get('client_type'):
+                    client_types = bcs(Title=rowdict['client_type'].title())
+                    if client_types:
+                        rowdict['LicenseType'] = client_types[0].UID
             if rowdict['id'] == instance.id \
                     and rowdict['field'] == field.getName():
                 matches.append(rowdict)
@@ -251,6 +261,10 @@ class Main:
         if isinstance(value, unicode):
             value = value.encode('utf-8')
 
+        # DataGridField: records handle this if value exists
+        if IDataGridField.providedBy(field):
+            if not value:
+                value = []
         # RecordsField is a list of dictionaries from the lookup table
         # NOTE: RecordsField is a subclass of RecordField so mu be checked first
         if isinstance(field, RecordsField) or \
@@ -269,11 +283,6 @@ class Main:
             value = self.resolve_reference_ids_to_uids(instance, field, value)
         # LinesField was converted to a multiline string on export
         elif Field.ILinesField.providedBy(field):
-            value = value.splitlines() if value else ()
-        # DataGridField 
-        elif IDataGridField.providedBy(field):
-            if value:
-                import pdb; pdb.set_trace()
             value = value.splitlines() if value else ()
         # XXX THis should not be reading entire file contents into mem.
         # TextField provides the IFileField interface, these must be ignored.
@@ -310,9 +319,6 @@ class Main:
         if portal_type not in self.wb:
             print 'WARNING: type %s requested but not exported' % portal_type
             return None
-        if portal_type == 'ReferenceDefinition':
-            import pdb; pdb.set_trace()
-
         pt = getToolByName(self.portal, 'portal_types')
         if portal_type not in pt:
             print 'Error: %s not found in portal_types.' % portal_type
@@ -343,30 +349,36 @@ class Main:
                         parent.Title(),
                         instance_id,
                         title)
-            try:
-                if fti.content_meta_type == 'Dexterity Item':
+            if fti.content_meta_type == 'Dexterity Item':
+                try:
                     instance = ploneapi.content.create(
                         type=portal_type,
                         container=parent,
                         id=instance_id,
                         title=title,
                         )
-                else:
+                except Exception, e:
+                    print str(e)
+                    #import pdb; pdb.set_trace()
+                    continue
+            else:
+                try:
                     instance = fti.constructInstance(
                             parent, instance_id, title=title)
-            except Exception, e:
-                print str(e)
-                import pdb; pdb.set_trace()
-                continue
+                except Exception, e:
+                    print str(e)
+                    import pdb; pdb.set_trace()
+                    continue
             instance.unmarkCreationFlag()
             for fieldname, value in rowdict.items():
                 try:
                     field = instance.schema[fieldname]
                     self.set(instance, field, value)
-                except:
-                    print 'Error on: %s %s %s' % (
+                except Exception, e:
+                    print 'Error %s on: %s %s %s' % (
+                            str(e),
                             instance.portal_type,
-                            instance.title,
+                            instance.Title(),
                             fieldname)
                     import pdb; pdb.set_trace()
                     if fieldname not in ('Location',):
@@ -432,9 +444,34 @@ class Main:
                         if services:
                             match['service_uid'] = services[0].UID
                         else:
+                            print 'Cannot resolve references for %s %s' % (
+                                portal_type, match['service_id'])
+                            import pdb; pdb.set_trace()
                             match['service_uid'] = None
                     new.append(match)
                 obj.setAnalyses(new)
+
+    def resolve_reference_results(self):
+        types = ('ReferenceDefinition',)
+        bcs = self.portal.bika_setup_catalog
+        for portal_type in types:
+            brains = bcs(portal_type=portal_type)
+            for brain in brains:
+                obj = brain.getObject()
+                new = []
+                for match in obj.getReferenceResults():
+                    if match.get('uid', False):
+                        services = bcs(
+                                getId=match['uid'])
+                        if services:
+                            match['uid'] = services[0].UID
+                        else:
+                            print 'Cannot resolve references for %s %s' % (
+                                portal_type, match['uid'])
+                            import pdb; pdb.set_trace()
+                            match['uid'] = None
+                    new.append(match)
+                obj.setReferenceResults(new)
 
 
 if __name__ == '__main__':

@@ -31,6 +31,7 @@ except:
 # import sys; sys.excepthook = excepthook
 
 export_types = [
+    'ReferenceDefinition',
     'ClientDepartment',
     'ClientType',
     'Client',
@@ -59,7 +60,6 @@ export_types = [
     'Manufacturer',
     'Method',
     'Preservation',
-    'ReferenceDefinition',
     'SampleCondition',
     'SampleMatrix',
     'StorageLocation',
@@ -191,7 +191,14 @@ class Main:
         value = field.get(instance)
         if type(value) == dict:
             value = [value]
-        keys = sorted(value[0].keys())
+        #Ensure keys are found for the longest dict
+        keys = []
+        for val in value:
+            for key in val.keys():
+                if key not in keys:
+                    keys.append(key)
+        keys = sorted(keys)
+
         #Remove special fields that are filled 'manually'
         for k in ('id', 'field'):
             if k in keys:
@@ -213,6 +220,12 @@ class Main:
             if field.getName() == 'Analyses':
                 col = 3 + len(keys)
             	ws.cell(column=col, row=1).value = "service_id"
+            elif field.getName() == 'ReferenceResults':
+                col = 3 + len(keys)
+            	ws.cell(column=col, row=1).value = "uid"
+            elif field.getName() == 'Licenses':
+                col = 3 + len(keys)
+            	ws.cell(column=col, row=1).value = "client_type"
         nr_rows = len(list(ws.rows)) + 1
         for row, v in enumerate(value):
             if not any(v.values()):
@@ -223,7 +236,9 @@ class Main:
             for col, key in enumerate(keys):
                 c_value = v.get(key, '')
                 if hasattr(c_value, 'portal_type'):
-                    print 'Error attempt to write instance %s:%s to field %s of instance %s:%s' % (c_value.portal_type, c_value.id, field.getName(), instance.portal_type, instance.id)
+                    print 'WARNING: attempt to write instance %s:%s to field %s of instance %s:%s' % (c_value.portal_type, c_value.id, field.getName(), instance.portal_type, instance.id)
+                    #import pdb; pdb.set_trace()
+                    #c_value = c_value.getId()
                     continue
 
                 try:
@@ -234,10 +249,24 @@ class Main:
                     import pdb; pdb.set_trace()
                     raise
 
-            if field.getName() == 'Analyses' and \
-               v.get('service_uid', False):
+            if field.getName() == 'Licenses' and v.get('LicenseType', False):
+                col = 3 + len(keys)
+                types = instance.bika_setup_catalog(UID=v['LicenseType'])
+                title = ''
+                if len(types):
+                    title = types[0].getId
+            	ws.cell(column=col, row=nr_rows+row).value = title
+            if field.getName() == 'Analyses' and v.get('service_uid', False):
                 col = 3 + len(keys)
                 services = instance.bika_setup_catalog(UID=v['service_uid'])
+                title = ''
+                if len(services):
+                    title = services[0].getId
+            	ws.cell(column=col, row=nr_rows+row).value = title
+            if field.getName() == 'ReferenceResults' and \
+               v.get('uid', False):
+                col = 3 + len(keys)
+                services = instance.bika_setup_catalog(UID=v['uid'])
                 title = ''
                 if len(services):
                     title = services[0].getId
@@ -399,8 +428,6 @@ class Main:
             ws.cell(column=2, row=row + 2).value = instance.UID()
             # then schema field values
             for col, field in enumerate(fields):
-                #if field.getName() == 'Licenses':
-                #    import pdb; pdb.set_trace()
                 value = self.mutate(instance, field)
                 try:
                     #print 'Set Cell (%s, %s) to %s' % ( col+3, row+2, value)
