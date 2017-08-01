@@ -5,6 +5,7 @@ import pprint
 import shutil
 import tempfile
 import transaction
+import traceback
 import zipfile
 from AccessControl.SecurityManagement import newSecurityManager
 from plone import api as ploneapi
@@ -37,6 +38,7 @@ default_profiles = [
 ]
 
 export_types = [
+    'UnitConversion',
     'ClientDepartment',
     'ClientType',
     'Client',
@@ -76,7 +78,6 @@ export_types = [
     'SubGroup',
     'Supplier',
     'SupplierContact',
-    'UnitConversion',
     'WorksheetTemplate',
     'AnalysisService',
 ]
@@ -129,7 +130,10 @@ class Main:
                   'bika_setup_catalog',
                   'portal_catalog']:
             print 'rebuilding %s' % c
-            self.portal[c].clearFindAndRebuild()
+            try:
+                self.portal[c].clearFindAndRebuild()
+            except:
+                print 'Rebuilding Catalog %s failed' % c
 
         transaction.commit()
 
@@ -234,17 +238,23 @@ class Main:
                     client_types = bcs(Title=rowdict['client_type'].title())
                     if client_types:
                         rowdict['LicenseType'] = client_types[0].UID
+                    else:
+                        import pdb; pdb.set_trace()
             if field.getName() == 'UnitConversions':
                 if rowdict.get('SampleType'):
                     sample_types = bcs(getId=rowdict['SampleType'])
                     if sample_types:
-                        print 'UnitConversions error: sample type %s not found' % (rowdict['SampleType'])
                         rowdict['SampleType'] = sample_types[0].UID
+                    else:
+                        print 'UnitConversions error: sample type %s not found' % (rowdict['SampleType'])
+                        import pdb; pdb.set_trace()
                 if rowdict.get('Unit'):
                     units = bcs(getId=rowdict['Unit'])
                     if units:
-                        print 'UnitConversions error: unit %s not found' % (rowdict['Unit'])
                         rowdict['Unit'] = units[0].UID
+                    else:
+                        print 'UnitConversions error: unit %s not found' % (rowdict['Unit'])
+                        import pdb; pdb.set_trace()
             if rowdict['id'] == instance.id \
                     and rowdict['field'] == field.getName():
                 matches.append(rowdict)
@@ -327,6 +337,8 @@ class Main:
                 self.set(instance, field, cellvalue)
 
     def import_portal_type(self, portal_type):
+        pc = self.portal.portal_catalog
+        bcs = self.portal.bika_setup_catalog
         if portal_type not in self.wb:
             print 'WARNING: type %s requested but not exported' % portal_type
             return None
@@ -362,38 +374,58 @@ class Main:
                         title)
             if fti.content_meta_type == 'Dexterity Item':
                 try:
+                    #Create with dummy title
                     instance = ploneapi.content.create(
                         type=portal_type,
                         container=parent,
-                        id=instance_id,
                         title=title,
+                        _bika_id=instance_id,
+                        id=instance_id,
                         )
                 except Exception, e:
-                    print str(e)
-                    #import pdb; pdb.set_trace()
-                    continue
+                    traceback.print_exc(file=sys.stdout)
+                    #print str(e)
+                    import pdb; pdb.set_trace()
+
+                for fieldname, value in rowdict.items():
+                    try:
+                        setattr(instance, fieldname, value)
+                    except Exception, e:
+                        print 'Error %s on: %s %s %s' % (
+                                str(e),
+                                instance.portal_type,
+                                instance.Title(),
+                                fieldname)
+                        import pdb; pdb.set_trace()
+                        if fieldname not in ('Location',):
+                            raise
+                instance.reindexObject()
+                if portal_type in (
+                        'ClientDepartment', 'ClientType', 'UnitConversion'):
+                    bcs.indexObject(instance)
             else:
+                #Archetypes
                 try:
                     instance = fti.constructInstance(
                             parent, instance_id, title=title)
+                    instance.unmarkCreationFlag()
+                    for fieldname, value in rowdict.items():
+                        try:
+                            field = instance.schema[fieldname]
+                            self.set(instance, field, value)
+                        except Exception, e:
+                            print 'Error %s on: %s %s %s' % (
+                                    str(e),
+                                    instance.portal_type,
+                                    instance.Title(),
+                                    fieldname)
+                            import pdb; pdb.set_trace()
+                            if fieldname not in ('Location',):
+                                raise
                 except Exception, e:
                     print str(e)
                     import pdb; pdb.set_trace()
                     continue
-            instance.unmarkCreationFlag()
-            for fieldname, value in rowdict.items():
-                try:
-                    field = instance.schema[fieldname]
-                    self.set(instance, field, value)
-                except Exception, e:
-                    print 'Error %s on: %s %s %s' % (
-                            str(e),
-                            instance.portal_type,
-                            instance.Title(),
-                            fieldname)
-                    import pdb; pdb.set_trace()
-                    if fieldname not in ('Location',):
-                        raise
 
     def defer(self, instance, field, catalog, allowed_types, target_id):
         self.deferred.append({
