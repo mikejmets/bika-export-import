@@ -205,6 +205,9 @@ class Main:
                 keys.remove(k)
         # Create or obtain sheet for this field type's values
         sheetname = '%s_values' % field.type
+        if field.type == 'datagrid':
+            sheetname = '%s_values' % field.getName()
+
         sheetname = sheetname[:31]
         if sheetname in self.wb:
             ws = self.wb[sheetname]
@@ -217,6 +220,7 @@ class Main:
             for col, key in enumerate(keys):
                 cell = ws.cell(column=col + 3, row=1)
                 cell.value = key
+            #Add extra columns
             if field.getName() == 'Analyses':
                 col = 3 + len(keys)
             	ws.cell(column=col, row=1).value = "service_id"
@@ -271,6 +275,18 @@ class Main:
                 if len(services):
                     title = services[0].getId
             	ws.cell(column=col, row=nr_rows+row).value = title
+            if instance.portal_type == 'AnalysisService' and \
+               field.getName() == 'UnitConversions':
+                types = instance.bika_setup_catalog(UID=v['SampleType'])
+                title = ''
+                if len(types):
+                    title = types[0].getId
+            	ws.cell(column=3, row=nr_rows+row).value = title
+                units = instance.bika_setup_catalog(UID=v['Unit'])
+                title = ''
+                if len(units):
+                    title = units[0].getId
+            	ws.cell(column=4, row=nr_rows+row).value = title
         return sheetname
 
     def write_reference_values(self, instance, field):
