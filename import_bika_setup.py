@@ -45,7 +45,6 @@ export_types = [
     'AnalysisProfile',
     'ARTemplate',
     'AnalysisCategory',
-    'AnalysisService',
     'AnalysisSpec',
     'AttachmentType',
     'BatchLabel',
@@ -79,6 +78,7 @@ export_types = [
     'SupplierContact',
     'UnitConversion',
     'WorksheetTemplate',
+    'AnalysisService',
 ]
 
 
@@ -234,6 +234,17 @@ class Main:
                     client_types = bcs(Title=rowdict['client_type'].title())
                     if client_types:
                         rowdict['LicenseType'] = client_types[0].UID
+            if field.getName() == 'UnitConversions':
+                if rowdict.get('SampleType'):
+                    sample_types = bcs(getId=rowdict['SampleType'])
+                    if sample_types:
+                        print 'UnitConversions error: sample type %s not found' % (rowdict['SampleType'])
+                        rowdict['SampleType'] = sample_types[0].UID
+                if rowdict.get('Unit'):
+                    units = bcs(getId=rowdict['Unit'])
+                    if units:
+                        print 'UnitConversions error: unit %s not found' % (rowdict['Unit'])
+                        rowdict['Unit'] = units[0].UID
             if rowdict['id'] == instance.id \
                     and rowdict['field'] == field.getName():
                 matches.append(rowdict)
