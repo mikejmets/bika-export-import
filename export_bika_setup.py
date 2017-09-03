@@ -9,6 +9,7 @@ from AccessControl.SecurityManagement import newSecurityManager
 from DateTime import DateTime
 from plone.dexterity.interfaces import IDexterityFTI
 from Products.Archetypes import Field
+from Products.ATExtensions.ateapi import RecordField, RecordsField
 from Products.CMFCore.utils import getToolByName
 import zope.interface
 from zope.component import getUtility
@@ -191,23 +192,13 @@ class Main:
         value = field.get(instance)
         if type(value) == dict:
             value = [value]
-        #Ensure keys are found for the longest dict
-        keys = []
-        for val in value:
-            for key in val.keys():
-                if key not in keys:
-                    keys.append(key)
-        keys = sorted(keys)
-
+        keys = sorted(value[0].keys())
         #Remove special fields that are filled 'manually'
         for k in ('id', 'field'):
             if k in keys:
                 keys.remove(k)
         # Create or obtain sheet for this field type's values
         sheetname = '%s_values' % field.type
-        if field.type == 'datagrid':
-            sheetname = '%s_values' % field.getName()
-
         sheetname = sheetname[:31]
         if sheetname in self.wb:
             ws = self.wb[sheetname]
@@ -220,16 +211,9 @@ class Main:
             for col, key in enumerate(keys):
                 cell = ws.cell(column=col + 3, row=1)
                 cell.value = key
-            #Add extra columns
             if field.getName() == 'Analyses':
                 col = 3 + len(keys)
             	ws.cell(column=col, row=1).value = "service_id"
-            elif field.getName() == 'ReferenceResults':
-                col = 3 + len(keys)
-            	ws.cell(column=col, row=1).value = "uid"
-            elif field.getName() == 'Licenses':
-                col = 3 + len(keys)
-            	ws.cell(column=col, row=1).value = "client_type"
         nr_rows = len(list(ws.rows)) + 1
         for row, v in enumerate(value):
             if not any(v.values()):
@@ -241,9 +225,7 @@ class Main:
                 c_value = v.get(key, '')
                 if hasattr(c_value, 'portal_type'):
                     print 'WARNING: attempt to write instance %s:%s to field %s of instance %s:%s' % (c_value.portal_type, c_value.id, field.getName(), instance.portal_type, instance.id)
-                    #import pdb; pdb.set_trace()
-                    #c_value = c_value.getId()
-                    continue
+                    c_value = c_value.getId()
 
                 try:
                     ws.cell(column=col + 3, row=nr_rows + row).value = c_value
@@ -253,40 +235,14 @@ class Main:
                     import pdb; pdb.set_trace()
                     raise
 
-            if field.getName() == 'Licenses' and v.get('LicenseType', False):
-                col = 3 + len(keys)
-                types = instance.bika_setup_catalog(UID=v['LicenseType'])
-                title = ''
-                if len(types):
-                    title = types[0].getId
-            	ws.cell(column=col, row=nr_rows+row).value = title
-            if field.getName() == 'Analyses' and v.get('service_uid', False):
+            if field.getName() == 'Analyses' and \
+               v.get('service_uid', False):
                 col = 3 + len(keys)
                 services = instance.bika_setup_catalog(UID=v['service_uid'])
                 title = ''
                 if len(services):
                     title = services[0].getId
             	ws.cell(column=col, row=nr_rows+row).value = title
-            if field.getName() == 'ReferenceResults' and \
-               v.get('uid', False):
-                col = 3 + len(keys)
-                services = instance.bika_setup_catalog(UID=v['uid'])
-                title = ''
-                if len(services):
-                    title = services[0].getId
-            	ws.cell(column=col, row=nr_rows+row).value = title
-            if instance.portal_type == 'AnalysisService' and \
-               field.getName() == 'UnitConversions':
-                types = instance.bika_setup_catalog(UID=v['SampleType'])
-                title = ''
-                if len(types):
-                    title = types[0].getId
-            	ws.cell(column=3, row=nr_rows+row).value = title
-                units = instance.bika_setup_catalog(UID=v['Unit'])
-                title = ''
-                if len(units):
-                    title = units[0].getId
-            	ws.cell(column=4, row=nr_rows+row).value = title
         return sheetname
 
     def write_reference_values(self, instance, field):
@@ -323,6 +279,8 @@ class Main:
             #Dexterity
             return getattr(instance, field['id'])
 
+        if field.getName() == 'ReferenceResults':
+            import pdb; pdb.set_trace()
         value = field.get(instance)
         # Booleans are special; we'll str and return them.
         if value is True or value is False:
